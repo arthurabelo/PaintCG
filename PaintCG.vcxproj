@@ -123,6 +123,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="clipping.cpp" />
     <ClCompile Include="fill.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="rasterizer.cpp" />
@@ -130,10 +131,15 @@
     <ClCompile Include="transforms.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="clipping.h" />
     <ClInclude Include="fill.h" />
     <ClInclude Include="rasterizer.h" />
     <ClInclude Include="shapes.h" />
     <ClInclude Include="transforms.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include=".gitattributes" />
+    <None Include=".gitignore" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
