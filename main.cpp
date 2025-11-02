@@ -79,6 +79,9 @@ struct Forma
 int winW = 800, winH = 600;
 int mouse_x = 0, mouse_y = 0;
 
+// Largura da barra lateral (menu)
+int sidebarWidth = 140;
+
 bool click1 = false;                    // verifica se foi realizado o primeiro clique do mouse (exemplo)
 int m_x = 0, m_y = 0;                   // coordenadas do mouse (exemplo)
 int x_1 = 0, y_1 = 0, x_2 = 0, y_2 = 0; // cliques 1 e 2 (exemplo)
@@ -649,6 +652,69 @@ void redrawAll()
             break;
         }
     }
+    // draw sidebar (overlay) with mode buttons
+    // sidebar drawn here to overlay any shapes that may occupy left region
+    auto drawSidebar = [&]() {
+        int sw = sidebarWidth;
+        // background
+        glColor3ub(230, 230, 230);
+        glBegin(GL_QUADS);
+        glVertex2i(0, 0);
+        glVertex2i(sw, 0);
+        glVertex2i(sw, winH);
+        glVertex2i(0, winH);
+        glEnd();
+
+        // buttons
+        std::vector<std::string> labels = {"Linha", "Retangulo", "Triangulo", "Poligono", "Circulo", "Flood Fill", "Clear"};
+        int btnH = 36;
+        int margin = 8;
+        int x0 = 8;
+        for (size_t i = 0; i < labels.size(); ++i)
+        {
+            int ytop = winH - margin - int(i) * (btnH + margin);
+            int ybot = ytop - btnH;
+
+            // decide color: highlighted if current mode (for first 5) or special colors for Flood/Clear
+            bool highlighted = false;
+            if (i == 0 && modo == M_LINHA)
+                highlighted = true;
+            if (i == 1 && modo == M_RETANGULO)
+                highlighted = true;
+            if (i == 2 && modo == M_TRIANGULO)
+                highlighted = true;
+            if (i == 3 && modo == M_POLIGONO)
+                highlighted = true;
+            if (i == 4 && modo == M_CIRCULO)
+                highlighted = true;
+
+            if (highlighted)
+                glColor3ub(70, 130, 180); // steel blue
+            else if (i == 5)
+                glColor3ub(200, 160, 50); // flood like color
+            else if (i == 6)
+                glColor3ub(200, 80, 80); // clear button
+            else
+                glColor3ub(245, 245, 245);
+
+            glBegin(GL_QUADS);
+            glVertex2i(0 + 4, ybot);
+            glVertex2i(sw - 4, ybot);
+            glVertex2i(sw - 4, ytop);
+            glVertex2i(0 + 4, ytop);
+            glEnd();
+
+            // text color
+            if (highlighted)
+                glColor3ub(255, 255, 255);
+            else
+                glColor3ub(0, 0, 0);
+
+            draw_text_stroke(x0, ybot + 8, labels[i], 0.09);
+        }
+    };
+
+    drawSidebar();
 
     // Redesenha texto de coordenadas e instruções
     glColor3f(0, 0, 0);
@@ -769,6 +835,59 @@ bool floodMode = false;
 void mouse(int button, int state, int x, int y)
 {
     int yy = winH - y - 1;
+    // If click is inside sidebar, handle menu actions and don't treat as canvas click
+    if (x < sidebarWidth && button == GLUT_LEFT_BUTTON && state == GLUT_DOWN)
+    {
+        // delegate to sidebar handler
+        // implement inline handler here
+        auto handleSidebarClick = [&](int sx, int sy)
+        {
+            std::vector<std::string> labels = {"Linha", "Retangulo", "Triangulo", "Poligono", "Circulo", "Flood Fill", "Clear"};
+            int btnH = 36;
+            int margin = 8;
+            for (size_t i = 0; i < labels.size(); ++i)
+            {
+                int ytop = winH - margin - int(i) * (btnH + margin);
+                int ybot = ytop - btnH;
+                if (sy >= ybot && sy <= ytop)
+                {
+                    if (i <= 4)
+                    {
+                        // set drawing mode
+                        TipoForma newMode = M_LINHA;
+                        if (i == 0) newMode = M_LINHA;
+                        if (i == 1) newMode = M_RETANGULO;
+                        if (i == 2) newMode = M_TRIANGULO;
+                        if (i == 3) newMode = M_POLIGONO;
+                        if (i == 4) newMode = M_CIRCULO;
+                        modo = newMode;
+                        drawing = false; // cancel any current drawing
+                        cout << "Modo selecionado: " << labels[i] << "\n";
+                    }
+                    else if (i == 5)
+                    {
+                        // flood fill: enable one-click flood mode
+                        floodMode = true;
+                        cout << "Flood fill ativado: clique na regio para preencher\n";
+                    }
+                    else if (i == 6)
+                    {
+                        // clear
+                        formas.clear();
+                        std::fill(framebuffer.begin(), framebuffer.end(), WHITE);
+                        glClear(GL_COLOR_BUFFER_BIT);
+                        glutSwapBuffers();
+                        cout << "Canvas limpo\n";
+                    }
+                    glutPostRedisplay();
+                    return;
+                }
+            }
+        };
+
+        handleSidebarClick(x, yy);
+        return;
+    }
     if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN)
     {
         // dependendo do modo, coletar pontos
