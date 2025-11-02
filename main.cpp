@@ -65,6 +65,11 @@ struct Forma {
 int winW = 800, winH = 600;
 int mouse_x = 0, mouse_y = 0;
 
+bool click1 = false; // verifica se foi realizado o primeiro clique do mouse (exemplo)
+int m_x = 0, m_y = 0; // coordenadas do mouse (exemplo)
+int x_1 = 0, y_1 = 0, x_2 = 0, y_2 = 0; // cliques 1 e 2 (exemplo)
+int width = winW, height = winH; // largura/altura - alias visual para o exemplo
+
 // Estado do aplicativo
 vector<Forma> formas;
 Forma currentForma;
@@ -87,7 +92,7 @@ Color getPixelBuffer(int x, int y){
     return framebuffer[idx(x,y)];
 }
 
-// Desenha apenas um pixel usando GL_POINTS (obrigatório)
+// Desenha pixel usando GL_POINTS
 void drawPixelGL(int x, int y, Color c){
     // Atualiza buffer auxiliar
     setPixelBuffer(x,y,c);
@@ -120,10 +125,6 @@ void clearScreen(){
 
 // ------------------------
 // Bresenham (linha)
-// Implementação que age no primeiro octante via redução (steep swap + sign).
-// A rotina abaixo usa o método clássico com "steep" e ystep, e faz o plot inverso
-// de pontos usando drawPixelGL(). Também disponibilizamos funções auxiliares
-// para demonstrar a redução ao primeiro octante e sua inversa (conceitual).
 // ------------------------
 
 struct OctantFlags {
@@ -331,8 +332,7 @@ void fillPolygonScanline(const vector<V2> &verts, Color cor){
 }
 
 // ------------------------
-// Flood-fill (4-neighborhood) - versão iterativa (stack) para evitar recursão.
-// Pinta a região conectada que tem a mesma cor que a cor no ponto inicial.
+// Flood-fill
 // ------------------------
 bool colorEqual(const Color &a, const Color &b){
     return a.r==b.r && a.g==b.g && a.b==b.b;
