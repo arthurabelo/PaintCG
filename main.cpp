@@ -95,6 +95,42 @@ TipoForma modo = M_LINHA;
 
 // Framebuffer auxiliar (armazenar cor de cada pixel)
 vector<Color> framebuffer; // tamanho winW * winH, row-major
+// Overlay buffer to store persistent pixel edits (flood-fill, scanline fills, etc.)
+vector<Color> overlayBuffer;
+vector<unsigned char> overlayMask; // 0 = empty, 1 = has overlay color
+
+// forward declaration: idx used by overlay helpers before full utility section
+inline int idx(int x, int y);
+
+inline void setOverlayPixel(int x, int y, Color c)
+{
+    if (x < 0 || x >= winW || y < 0 || y >= winH)
+        return;
+    int i = idx(x, y);
+    overlayBuffer[i] = c;
+    overlayMask[i] = 1;
+}
+
+inline Color getCombinedPixel(int x, int y)
+{
+    if (x < 0 || x >= winW || y < 0 || y >= winH)
+        return WHITE;
+    int i = idx(x, y);
+    if (overlayMask[i])
+        return overlayBuffer[i];
+    return framebuffer[i];
+}
+
+// Apply overlay pixels into framebuffer (used when composing before flush)
+void applyOverlayToFramebuffer()
+{
+    size_t N = framebuffer.size();
+    for (size_t i = 0; i < N; ++i)
+    {
+        if (overlayMask[i])
+            framebuffer[i] = overlayBuffer[i];
+    }
+}
 
 // Funções utilitárias de pixel / framebuffer
 inline int idx(int x, int y) { return y * winW + x; }
@@ -118,10 +154,22 @@ void drawPixelGL(int x, int y, Color c)
 {
     // Atualiza buffer auxiliar
     setPixelBuffer(x, y, c);
+}
 
-    glColor3ub(c.r, c.g, c.b);
+// Desenha todo o framebuffer na tela (um único batched GL_POINTS)
+void flushFramebuffer()
+{
+    glClear(GL_COLOR_BUFFER_BIT);
     glBegin(GL_POINTS);
-    glVertex2i(x, y);
+    for (int y = 0; y < winH; ++y)
+    {
+        for (int x = 0; x < winW; ++x)
+        {
+            Color c = framebuffer[idx(x, y)];
+            glColor3ub(c.r, c.g, c.b);
+            glVertex2i(x, y);
+        }
+    }
     glEnd();
 }
 
@@ -130,21 +178,9 @@ void clearScreen()
 {
     // Limpa framebuffer em RAM
     std::fill(framebuffer.begin(), framebuffer.end(), WHITE);
-
-    glClear(GL_COLOR_BUFFER_BIT);
-    // Preenche todos os pixels brancos com GL_POINTS para manter consistência,
-    // mas isso é opcional — iremos redesenhar formas a partir do buffer.
-    for (int y = 0; y < winH; ++y)
-    {
-        for (int x = 0; x < winW; ++x)
-        {
-            // usa GL_POINTS
-            glColor3ub(WHITE.r, WHITE.g, WHITE.b);
-            glBegin(GL_POINTS);
-            glVertex2i(x, y);
-            glEnd();
-        }
-    }
+    std::fill(overlayBuffer.begin(), overlayBuffer.end(), WHITE);
+    std::fill(overlayMask.begin(), overlayMask.end(), 0);
+    flushFramebuffer();
     glutSwapBuffers();
 }
 
@@ -379,7 +415,7 @@ void fillPolygonScanline(const vector<V2> &verts, Color cor)
             int x_end = (int)floor(AET[i + 1].x_at_ymin);
             for (int x = x_start; x <= x_end; ++x)
             {
-                drawPixelGL(x, scan, cor);
+                setOverlayPixel(x, scan, cor);
             }
         }
 
@@ -416,7 +452,7 @@ void floodFill4(int sx, int sy, Color newColor)
 {
     if (sx < 0 || sx >= winW || sy < 0 || sy >= winH)
         return;
-    Color target = getPixelBuffer(sx, sy);
+    Color target = getCombinedPixel(sx, sy);
     if (colorEqual(target, newColor))
         return;
 
@@ -429,10 +465,10 @@ void floodFill4(int sx, int sy, Color newColor)
         int x = p.x, y = p.y;
         if (x < 0 || x >= winW || y < 0 || y >= winH)
             continue;
-        Color c = getPixelBuffer(x, y);
+        Color c = getCombinedPixel(x, y);
         if (!colorEqual(c, target))
             continue;
-        drawPixelGL(x, y, newColor);
+    setOverlayPixel(x, y, newColor);
         st.push({x + 1, y});
         st.push({x - 1, y});
         st.push({x, y + 1});
@@ -557,8 +593,7 @@ void redrawAll()
 {
     // Limpa framebuffer em RAM
     std::fill(framebuffer.begin(), framebuffer.end(), WHITE);
-    // Limpa tela
-    glClear(GL_COLOR_BUFFER_BIT);
+    // we'll flush the framebuffer to the screen after rasterizing shapes
 
     // Desenha todas as formas usando as rotinas definidas
     for (const auto &f : formas)
@@ -601,26 +636,17 @@ void redrawAll()
         {
         case M_LINHA:
             if (currentForma.verts.size() >= 1)
-            {
-                // desenha linha de ponto inicial até o mouse
                 bresenhamLine(currentForma.verts[0].x, currentForma.verts[0].y, mouse_x, mouse_y, previewColor);
-            }
             break;
         case M_RETANGULO:
             if (currentForma.verts.size() >= 1)
-            {
                 drawRectFromCorners(currentForma.verts[0].x, currentForma.verts[0].y, mouse_x, mouse_y, previewColor);
-            }
             break;
         case M_TRIANGULO:
             if (currentForma.verts.size() == 1)
-            {
-                // apenas uma aresta do ponto inicial ao mouse
                 bresenhamLine(currentForma.verts[0].x, currentForma.verts[0].y, mouse_x, mouse_y, previewColor);
-            }
             else if (currentForma.verts.size() == 2)
             {
-                // desenha a primeira aresta e a aresta de preview
                 bresenhamLine(currentForma.verts[0].x, currentForma.verts[0].y, currentForma.verts[1].x, currentForma.verts[1].y, previewColor);
                 bresenhamLine(currentForma.verts[1].x, currentForma.verts[1].y, mouse_x, mouse_y, previewColor);
             }
@@ -628,12 +654,8 @@ void redrawAll()
         case M_POLIGONO:
             if (currentForma.verts.size() >= 1)
             {
-                // desenha arestas já definidas
                 for (size_t i = 0; i + 1 < currentForma.verts.size(); ++i)
-                {
                     bresenhamLine(currentForma.verts[i].x, currentForma.verts[i].y, currentForma.verts[i + 1].x, currentForma.verts[i + 1].y, previewColor);
-                }
-                // desenha aresta provisoria do ultimo vertice até o mouse
                 V2 last = currentForma.verts.back();
                 bresenhamLine(last.x, last.y, mouse_x, mouse_y, previewColor);
             }
@@ -841,6 +863,12 @@ void redrawAll()
         }
     };
 
+    // flush rasterized shapes/preview to the screen
+    // compose overlay (fills) on top of rasterized framebuffer
+    applyOverlayToFramebuffer();
+    flushFramebuffer();
+
+    // draw sidebar and UI overlays ON TOP of the rasterized framebuffer
     drawSidebar();
 
     // Redesenha texto de coordenadas e instruções
@@ -877,6 +905,8 @@ void reshape(int w, int h)
 
     // Rebuild framebuffer
     framebuffer.assign(winW * winH, WHITE);
+    overlayBuffer.assign(winW * winH, WHITE);
+    overlayMask.assign(winW * winH, 0);
 }
 
 void keyboard(unsigned char key, int x, int y)
@@ -913,9 +943,7 @@ void keyboard(unsigned char key, int x, int y)
         break;
     case 'x': // clear
         formas.clear();
-        std::fill(framebuffer.begin(), framebuffer.end(), WHITE);
-        glClear(GL_COLOR_BUFFER_BIT);
-        glutSwapBuffers();
+        clearScreen();
         break;
     case 'f': // scanline fill last polygon-like shape
         if (!formas.empty())
@@ -924,7 +952,8 @@ void keyboard(unsigned char key, int x, int y)
             if (last.tipo == M_POLIGONO && last.verts.size() >= 3)
             {
                 fillPolygonScanline(last.verts, FILL_COLOR);
-                glutSwapBuffers();
+                // scanline fill writes into overlay; request redisplay so redrawAll composes overlay
+                glutPostRedisplay();
             }
             else
             {
@@ -1001,9 +1030,7 @@ void mouse(int button, int state, int x, int y)
                     {
                         // clear
                         formas.clear();
-                        std::fill(framebuffer.begin(), framebuffer.end(), WHITE);
-                        glClear(GL_COLOR_BUFFER_BIT);
-                        glutSwapBuffers();
+                        clearScreen();
                         cout << "Canvas limpo\n";
                     }
                     glutPostRedisplay();
@@ -1177,6 +1204,8 @@ int main(int argc, char **argv)
 
     // init framebuffer
     framebuffer.assign(winW * winH, WHITE);
+    overlayBuffer.assign(winW * winH, WHITE);
+    overlayMask.assign(winW * winH, 0);
     glClearColor(1, 1, 1, 1);
     glPointSize(1.0f);
 
