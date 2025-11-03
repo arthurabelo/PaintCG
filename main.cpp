@@ -24,6 +24,7 @@
 #include <cstdlib>
 #include <vector>
 #include <stack>
+#include <queue>
 #include <algorithm>
 #include <array>
 #include <string>
@@ -461,6 +462,8 @@ bool colorEqual(const Color &a, const Color &b)
     return a.r == b.r && a.g == b.g && a.b == b.b;
 }
 
+// Flood fill eficiente usando BFS (fila) para evitar stack overflow e melhorar performance
+// Utiliza um buffer auxiliar de visitados para evitar múltiplos acessos ao mesmo pixel
 void floodFill4(int sx, int sy, Color newColor)
 {
     if (sx < 0 || sx >= winW || sy < 0 || sy >= winH)
@@ -469,23 +472,43 @@ void floodFill4(int sx, int sy, Color newColor)
     if (colorEqual(target, newColor))
         return;
 
-    stack<V2> st;
-    st.push({sx, sy});
-    while (!st.empty())
+    // Buffer de visitados (dinâmico, 1 byte por pixel)
+    std::vector<unsigned char> visited(winW * winH, 0);
+    std::queue<V2> q;
+    q.push({sx, sy});
+    visited[idx(sx, sy)] = 1;
+
+    // Direções: direita, esquerda, cima, baixo
+    const int dx[4] = {1, -1, 0, 0};
+    const int dy[4] = {0, 0, 1, -1};
+
+    while (!q.empty())
     {
-        V2 p = st.top();
-        st.pop();
+        V2 p = q.front();
+        q.pop();
         int x = p.x, y = p.y;
-        if (x < 0 || x >= winW || y < 0 || y >= winH)
-            continue;
-        Color c = getCombinedPixel(x, y);
-        if (!colorEqual(c, target))
-            continue;
-    setOverlayPixel(x, y, newColor);
-        st.push({x + 1, y});
-        st.push({x - 1, y});
-        st.push({x, y + 1});
-        st.push({x, y - 1});
+        setOverlayPixel(x, y, newColor);
+
+        for (int d = 0; d < 4; ++d)
+        {
+            int nx = x + dx[d];
+            int ny = y + dy[d];
+            if (nx < 0 || nx >= winW || ny < 0 || ny >= winH)
+                continue;
+            int i = idx(nx, ny);
+            if (visited[i])
+                continue;
+            Color c_combined = getCombinedPixel(nx, ny);
+            Color c_frame = getPixelBuffer(nx, ny);
+            // Só avança se o pixel não for barreira (ou seja, se a cor do framebuffer for igual à cor alvo)
+            if (!colorEqual(c_frame, target))
+                continue;
+            if (colorEqual(c_combined, target))
+            {
+                q.push({nx, ny});
+                visited[i] = 1;
+            }
+        }
     }
 }
 
@@ -777,8 +800,13 @@ void redrawAll()
 
             if (highlighted)
                 glColor3ub(70, 130, 180); // steel blue
-            else if (i == 5)
-                glColor3ub(200, 160, 50); // flood like color
+            else if (i == 5) {
+                // Feedback visual: botão destacado se floodMode ativo
+                if (floodMode)
+                    glColor3ub(70, 180, 70); // verde para ativo
+                else
+                    glColor3ub(200, 160, 50); // flood like color
+            }
             else if (i == 6)
                 glColor3ub(200, 80, 80); // clear button
             else
@@ -1022,8 +1050,8 @@ void keyboard(unsigned char key, int x, int y)
             Forma &last = formas.back();
             if (last.tipo == M_POLIGONO && last.verts.size() >= 3)
             {
+                redrawAll(); // redesenha todas as formas no framebuffer antes de preencher
                 fillPolygonScanline(last.verts, currentFillColor);
-                // scanline fill writes into overlay; request redisplay so redrawAll composes overlay
                 glutPostRedisplay();
             }
             else
@@ -1119,9 +1147,12 @@ void mouse(int button, int state, int x, int y)
                         }
                         else if (i == 5)
                         {
-                            // flood fill: enable one-click flood mode
-                            floodMode = true;
-                            cout << "Flood fill ativado: clique na regio para preencher\n";
+                            // flood fill: toggle mode
+                            floodMode = !floodMode;
+                            if (floodMode)
+                                cout << "Flood fill ativado: clique na regiao para preencher\n";
+                            else
+                                cout << "Flood fill desativado\n";
                         }
                         else if (i == 6)
                         {
@@ -1130,6 +1161,7 @@ void mouse(int button, int state, int x, int y)
                             std::fill(framebuffer.begin(), framebuffer.end(), WHITE);
                             glClear(GL_COLOR_BUFFER_BIT);
                             glutSwapBuffers();
+                            clearScreen();
                             cout << "Canvas limpo\n";
                         }
                         glutPostRedisplay();
@@ -1146,7 +1178,7 @@ void mouse(int button, int state, int x, int y)
         // If we're in flood mode, perform one-click fill and do not collect any drawing vertices
         if (floodMode)
         {
-            // Só faz o preenchimento se não clicou no menu de cor
+            redrawAll(); // redesenha todas as formas no framebuffer antes de preencher
             floodFill4(x, yy, currentFillColor);
             floodMode = false;
             glutPostRedisplay();
@@ -1209,6 +1241,8 @@ void mouse(int button, int state, int x, int y)
                 if (currentForma.verts.size() == 3)
                 {
                     formas.push_back(currentForma);
+                    std::fill(overlayBuffer.begin(), overlayBuffer.end(), WHITE);
+                    std::fill(overlayMask.begin(), overlayMask.end(), 0);
                     drawing = false;
                     redrawAll();
                 }
@@ -1260,7 +1294,6 @@ void mouse(int button, int state, int x, int y)
         {
             if (currentForma.verts.size() >= 3)
             {
-                formas.push_back(currentForma);
                 drawing = false;
                 redrawAll();
             }
