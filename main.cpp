@@ -80,7 +80,7 @@ int winW = 800, winH = 600;
 int mouse_x = 0, mouse_y = 0;
 
 // Largura da barra lateral (menu)
-int sidebarWidth = 140;
+int sidebarWidth = 50;
 
 bool click1 = false;                    // verifica se foi realizado o primeiro clique do mouse (exemplo)
 int m_x = 0, m_y = 0;                   // coordenadas do mouse (exemplo)
@@ -704,13 +704,140 @@ void redrawAll()
             glVertex2i(0 + 4, ytop);
             glEnd();
 
-            // text color
+            // Desenhar icones usando GL_LINES
+            int cx = sw / 2;
+            int cy = ybot + btnH / 2;
+            int s = 12; // icon half-size
+            glLineWidth(2.0f);
+            // choose stroke color (invert when highlighted)
             if (highlighted)
                 glColor3ub(255, 255, 255);
             else
-                glColor3ub(0, 0, 0);
+                glColor3ub(20, 20, 20);
 
-            draw_text_stroke(x0, ybot + 8, labels[i], 0.09);
+            switch ((int)i)
+            {
+            case 0: // Linha (diagonal)
+            {
+                glBegin(GL_LINES);
+                glVertex2i(cx - s, cy - s);
+                glVertex2i(cx + s, cy + s);
+                glEnd();
+                break;
+            }
+            case 1: // Retangulo
+            {
+                int lx = cx - s, rx = cx + s, ty = cy + s, by = cy - s;
+                glBegin(GL_LINES);
+                glVertex2i(lx, by); glVertex2i(rx, by);
+                glVertex2i(rx, by); glVertex2i(rx, ty);
+                glVertex2i(rx, ty); glVertex2i(lx, ty);
+                glVertex2i(lx, ty); glVertex2i(lx, by);
+                glEnd();
+                break;
+            }
+            case 2: // Triangulo
+            {
+                int x1 = cx, y1 = cy + s;
+                int x2 = cx - s, y2 = cy - s;
+                int x3 = cx + s, y3 = cy - s;
+                glBegin(GL_LINES);
+                glVertex2i(x1, y1); glVertex2i(x2, y2);
+                glVertex2i(x2, y2); glVertex2i(x3, y3);
+                glVertex2i(x3, y3); glVertex2i(x1, y1);
+                glEnd();
+                break;
+            }
+            case 3: // Poligono (hexágono)
+            {
+                const int N = 6;
+                double ang0 = -M_PI / 2;
+                std::vector<std::pair<int,int>> pts;
+                for (int k = 0; k < N; ++k)
+                {
+                    double a = ang0 + 2.0 * k * M_PI / N;
+                    int px = cx + (int)round(s * cos(a));
+                    int py = cy + (int)round(s * sin(a));
+                    pts.emplace_back(px, py);
+                }
+                glBegin(GL_LINES);
+                for (int k = 0; k < N; ++k)
+                {
+                    int nx = (k + 1) % N;
+                    glVertex2i(pts[k].first, pts[k].second);
+                    glVertex2i(pts[nx].first, pts[nx].second);
+                }
+                glEnd();
+                break;
+            }
+            case 4: // Circulo
+            {
+                const int SEG = 40;
+                glBegin(GL_LINES);
+                for (int k = 0; k < SEG; ++k)
+                {
+                    double a1 = 2.0 * M_PI * k / SEG;
+                    double a2 = 2.0 * M_PI * (k + 1) / SEG;
+                    int x1 = cx + (int)round(s * cos(a1));
+                    int y1 = cy + (int)round(s * sin(a1));
+                    int x2 = cx + (int)round(s * cos(a2));
+                    int y2 = cy + (int)round(s * sin(a2));
+                    glVertex2i(x1, y1); glVertex2i(x2, y2);
+                }
+                glEnd();
+                break;
+            }
+            case 5: // Flood Fill (balde + nivel de liquido + gota) - desenhado com GL_LINES
+            {
+                int tlx = cx - s;           // top-left x
+                int trx = cx + s;           // top-right x
+                int tly = cy + s/2;         // top y
+                int blx = cx - s/2;         // bottom-left x
+                int brx = cx + s/2;         // bottom-right x
+                int bly = cy - s;           // bottom y
+
+                glBegin(GL_LINES);
+                // rim
+                glVertex2i(tlx, tly); glVertex2i(trx, tly);
+                // right side
+                glVertex2i(trx, tly); glVertex2i(brx, bly);
+                // bottom
+                glVertex2i(brx, bly); glVertex2i(blx, bly);
+                // left side
+                glVertex2i(blx, bly); glVertex2i(tlx, tly);
+                glEnd();
+
+                // liquid level: a small wavy line inside the bucket
+                int Lx = tlx + 4;
+                int Rx = trx - 4;
+                int Ly = tly - (s / 6);
+                glBegin(GL_LINES);
+                int segments = 6;
+                for (int k = 0; k < segments; ++k)
+                {
+                    double a = double(k) / segments;
+                    double b = double(k + 1) / segments;
+                    int x1 = Lx + (int)round((Rx - Lx) * a);
+                    int x2 = Lx + (int)round((Rx - Lx) * b);
+                    int y1 = Ly + (int)round( ( (k%2)==0 ? 2 : -2) );
+                    int y2 = Ly + (int)round( ( ((k+1)%2)==0 ? 2 : -2) );
+                    glVertex2i(x1, y1); glVertex2i(x2, y2);
+                }
+                glEnd();
+                break;
+            }
+            case 6: // Clear (X)
+            {
+                glBegin(GL_LINES);
+                glVertex2i(cx - s, cy - s); glVertex2i(cx + s, cy + s);
+                glVertex2i(cx - s, cy + s); glVertex2i(cx + s, cy - s);
+                glEnd();
+                break;
+            }
+            default:
+                break;
+            }
+            glLineWidth(1.0f);
         }
     };
 
@@ -718,13 +845,14 @@ void redrawAll()
 
     // Redesenha texto de coordenadas e instruções
     glColor3f(0, 0, 0);
-    draw_text_stroke(5, 5, string("Modo: ") + (modo == M_LINHA ? "Linha" : modo == M_RETANGULO ? "Retangulo"
+    draw_text_stroke(sidebarWidth + 5, 5, string("Modo: ") + (modo == M_LINHA ? "Linha" : modo == M_RETANGULO ? "Retangulo"
                                                                        : modo == M_TRIANGULO   ? "Triangulo"
                                                                        : modo == M_POLIGONO    ? "Poligono"
                                                                                                : "Circulo"),
                      0.15);
-    draw_text_stroke(5, 20, string("Clique esquerdo para adicionar vértices. Clique direito para fechar polígono."), 0.09);
-    draw_text_stroke(5, 34, string("Teclas: l=linha r=ret t=tri p=pol c=circ f=scanfill o=flood x=clear esc=sair"), 0.08);
+    // Mostrar coordenadas do mouse
+    draw_text_stroke(sidebarWidth + 5, 20, string("(") + to_string(mouse_x) + string(", ") + to_string(mouse_y) + string(")"), 0.09);
+    draw_text_stroke(sidebarWidth + 5, 35, string("Atalhos: l=linha r=ret t=tri p=pol c=circ f=scanfill o=flood x=clear esc=sair"), 0.08);
 
     glutSwapBuffers();
 }
