@@ -92,6 +92,8 @@ vector<Forma> formas;
 Forma currentForma;
 bool drawing = false; // se estamos no meio de desenhar
 TipoForma modo = M_LINHA;
+// Modo flood fill (deve ser declarado antes do uso em qualquer função)
+bool floodMode = false;
 
 // Framebuffer auxiliar (armazenar cor de cada pixel)
 vector<Color> framebuffer; // tamanho winW * winH, row-major
@@ -919,26 +921,36 @@ void keyboard(unsigned char key, int x, int y)
     case 'l':
     case '1':
         modo = M_LINHA;
+        floodMode = false;
+        drawing = false;
         cout << "Modo: Linha\n";
         break;
     case 'r':
     case '2':
         modo = M_RETANGULO;
+        floodMode = false;
+        drawing = false;
         cout << "Modo: Retangulo\n";
         break;
     case 't':
     case '3':
         modo = M_TRIANGULO;
+        floodMode = false;
+        drawing = false;
         cout << "Modo: Triangulo\n";
         break;
     case 'p':
     case '4':
         modo = M_POLIGONO;
+        floodMode = false;
+        drawing = false;
         cout << "Modo: Poligono\n";
         break;
     case 'c':
     case '5':
         modo = M_CIRCULO;
+        floodMode = false;
+        drawing = false;
         cout << "Modo: Circulo\n";
         break;
     case 'x': // clear
@@ -963,7 +975,8 @@ void keyboard(unsigned char key, int x, int y)
         break;
     case 'o': // enable flood fill mode - user should click to fill
         cout << "Modo Flood-Fill: clique na regiao para preencher\n";
-        modo = M_POLIGONO; // keep drawing mode but click handler will call floodfill if key set - handled via a flag
+        floodMode = true;
+        drawing = false; // ensure we don't keep collecting vertices while in flood mode
         break;
     case 13: // Enter key
         if (modo == M_POLIGONO && drawing)
@@ -986,7 +999,7 @@ void keyboard(unsigned char key, int x, int y)
     glutPostRedisplay();
 }
 
-bool floodMode = false;
+
 
 void mouse(int button, int state, int x, int y)
 {
@@ -1018,12 +1031,14 @@ void mouse(int button, int state, int x, int y)
                         if (i == 4) newMode = M_CIRCULO;
                         modo = newMode;
                         drawing = false; // cancel any current drawing
+                        floodMode = false; // selecting a drawing mode exits flood-fill mode
                         cout << "Modo selecionado: " << labels[i] << "\n";
                     }
                     else if (i == 5)
                     {
                         // flood fill: enable one-click flood mode
                         floodMode = true;
+                        drawing = false; // don't allow drawing while in flood mode
                         cout << "Flood fill ativado: clique na regio para preencher\n";
                     }
                     else if (i == 6)
@@ -1044,6 +1059,15 @@ void mouse(int button, int state, int x, int y)
     }
     if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN)
     {
+        // If we're in flood mode, perform one-click fill and do not collect any drawing vertices
+        if (floodMode)
+        {
+            floodFill4(x, yy, FILL_COLOR);
+            floodMode = false;
+            glutPostRedisplay();
+            return;
+        }
+
         // dependendo do modo, coletar pontos
         if (modo == M_LINHA)
         {
@@ -1142,13 +1166,7 @@ void mouse(int button, int state, int x, int y)
                 redrawAll();
             }
         }
-        // Flood fill trigger if floodMode true
-        if (floodMode)
-        {
-            floodFill4(x, yy, FILL_COLOR);
-            floodMode = false;
-            glutPostRedisplay();
-        }
+        // (Flood fill handled above before any drawing action)
     }
     else if (button == GLUT_RIGHT_BUTTON && state == GLUT_DOWN)
     {
