@@ -845,13 +845,13 @@ void redrawAll()
 
     // Redesenha texto de coordenadas e instruções
     glColor3f(0, 0, 0);
-    draw_text_stroke(sidebarWidth + 5, 35, string("(") + to_string(mouse_x) + string(", ") + to_string(mouse_y) + string(")"), 0.09);
-    draw_text_stroke(sidebarWidth + 5, 22, string("Modo: ") + (modo == M_LINHA ? "Linha" : modo == M_RETANGULO ? "Retangulo"
+    draw_text_stroke(sidebarWidth + 5, 40, string("(") + to_string(mouse_x) + string(", ") + to_string(mouse_y) + string(")"), 0.10);
+    draw_text_stroke(sidebarWidth + 5, 20, string("Modo: ") + (modo == M_LINHA ? "Linha" : modo == M_RETANGULO ? "Retangulo"
                                                                        : modo == M_TRIANGULO   ? "Triangulo"
                                                                        : modo == M_POLIGONO    ? "Poligono"
                                                                                                : "Circulo"),
                      0.15);
-    draw_text_stroke(sidebarWidth + 5, 5, string("Atalhos: l = linha r = ret t = tri p = pol c = circ f = scanfill o = flood x = clear esc = sair"), 0.09);
+    draw_text_stroke(sidebarWidth + 5, 5, string("Atalhos: l=linha r=ret t=tri p=pol c=circ f=scanfill o=flood x=clear esc=sair"), 0.12);
 
     glutSwapBuffers();
 }
