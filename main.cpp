@@ -59,7 +59,18 @@ const Color BLACK = {0, 0, 0};
 const Color RED = {255, 0, 0};
 const Color GREEN = {0, 255, 0};
 const Color BLUE = {0, 0, 255};
-const Color FILL_COLOR = {200, 200, 20}; // cor padrão de preenchimento
+const Color YELLOW = {255, 255, 0};
+const Color CYAN = {0, 255, 255};
+const Color MAGENTA = {255, 0, 255};
+const Color ORANGE = {255, 140, 0};
+const Color FILL_COLOR_DEFAULT = {200, 200, 20}; // cor padrão de preenchimento
+
+// Lista de cores para o menu superior
+std::vector<Color> fillColors = {YELLOW, RED, GREEN, BLUE, CYAN, MAGENTA, ORANGE, BLACK};
+std::vector<std::string> fillColorNames = {"Amarelo", "Vermelho", "Verde", "Azul", "Ciano", "Magenta", "Laranja", "Preto"};
+
+// Cor de preenchimento atualmente selecionada
+Color currentFillColor = FILL_COLOR_DEFAULT;
 
 // Vertice inteiro
 struct V2
@@ -676,8 +687,60 @@ void redrawAll()
             break;
         }
     }
-    // draw sidebar (overlay) with mode buttons
-    // sidebar drawn here to overlay any shapes that may occupy left region
+
+    // --- MENU SUPERIOR DE CORES ---
+    auto drawTopColorMenu = [&]() {
+        int menuH = 40;
+        int colorBoxW = 40;
+        int colorBoxH = 32;
+        int margin = 8;
+        int nColors = (int)fillColors.size();
+        int totalW = nColors * (colorBoxW + margin) + margin;
+        int ytop = winH - menuH;
+        // fundo do menu
+        glColor3ub(220, 220, 220);
+        glBegin(GL_QUADS);
+        glVertex2i(0, winH);
+        glVertex2i(winW, winH);
+        glVertex2i(winW, ytop);
+        glVertex2i(0, ytop);
+        glEnd();
+        // caixas de cor
+        for (int i = 0; i < nColors; ++i) {
+            int x0 = margin + i * (colorBoxW + margin);
+            int y0 = ytop + (menuH - colorBoxH) / 2;
+            Color c = fillColors[i];
+            // destaque se selecionada
+            if (colorEqual(c, currentFillColor)) {
+                glColor3ub(50, 50, 50);
+                glLineWidth(3.0f);
+                glBegin(GL_LINE_LOOP);
+                glVertex2i(x0 - 2, y0 - 2);
+                glVertex2i(x0 + colorBoxW + 2, y0 - 2);
+                glVertex2i(x0 + colorBoxW + 2, y0 + colorBoxH + 2);
+                glVertex2i(x0 - 2, y0 + colorBoxH + 2);
+                glEnd();
+                glLineWidth(1.0f);
+            }
+            glColor3ub(c.r, c.g, c.b);
+            glBegin(GL_QUADS);
+            glVertex2i(x0, y0);
+            glVertex2i(x0 + colorBoxW, y0);
+            glVertex2i(x0 + colorBoxW, y0 + colorBoxH);
+            glVertex2i(x0, y0 + colorBoxH);
+            glEnd();
+            // nome da cor
+            glColor3ub(30, 30, 30);
+            draw_text_stroke(x0 + 2, y0 - 10, fillColorNames[i], 0.10);
+        }
+    };
+
+    // flush rasterized shapes/preview to the screen
+    // compose overlay (fills) on top of rasterized framebuffer
+    applyOverlayToFramebuffer();
+    flushFramebuffer();
+
+    // draw sidebar BEFORE overlays and UI text
     auto drawSidebar = [&]() {
         int sw = sidebarWidth;
         // background
@@ -696,7 +759,7 @@ void redrawAll()
         int x0 = 8;
         for (size_t i = 0; i < labels.size(); ++i)
         {
-            int ytop = winH - margin - int(i) * (btnH + margin);
+            int ytop = winH - margin - 40 - int(i) * (btnH + margin);
             int ybot = ytop - btnH;
 
             // decide color: highlighted if current mode (for first 5) or special colors for Flood/Clear
@@ -864,14 +927,10 @@ void redrawAll()
             glLineWidth(1.0f);
         }
     };
-
-    // flush rasterized shapes/preview to the screen
-    // compose overlay (fills) on top of rasterized framebuffer
-    applyOverlayToFramebuffer();
-    flushFramebuffer();
-
-    // draw sidebar and UI overlays ON TOP of the rasterized framebuffer
     drawSidebar();
+
+    // draw top color menu AFTER sidebar so it overlays only the top
+    drawTopColorMenu();
 
     // Redesenha texto de coordenadas e instruções
     glColor3f(0, 0, 0);
@@ -963,7 +1022,7 @@ void keyboard(unsigned char key, int x, int y)
             Forma &last = formas.back();
             if (last.tipo == M_POLIGONO && last.verts.size() >= 3)
             {
-                fillPolygonScanline(last.verts, FILL_COLOR);
+                fillPolygonScanline(last.verts, currentFillColor);
                 // scanline fill writes into overlay; request redisplay so redrawAll composes overlay
                 glutPostRedisplay();
             }
@@ -977,6 +1036,7 @@ void keyboard(unsigned char key, int x, int y)
         cout << "Modo Flood-Fill: clique na regiao para preencher\n";
         floodMode = true;
         drawing = false; // ensure we don't keep collecting vertices while in flood mode
+        // currentFillColor permanece o mesmo até o usuário clicar no menu de cor
         break;
     case 13: // Enter key
         if (modo == M_POLIGONO && drawing)
@@ -1004,57 +1064,34 @@ void keyboard(unsigned char key, int x, int y)
 void mouse(int button, int state, int x, int y)
 {
     int yy = winH - y - 1;
+    // --- MENU SUPERIOR DE CORES ---
+    int menuH = 40;
+    int colorBoxW = 40;
+    int colorBoxH = 32;
+    int margin = 8;
+    int nColors = (int)fillColors.size();
+    int ytop = winH - menuH;
+    // Clique no menu superior de cores
+    if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN && y >= 0 && y <= menuH)
+    {
+        for (int i = 0; i < nColors; ++i) {
+            int x0 = margin + i * (colorBoxW + margin);
+            int y0 = ytop + (menuH - colorBoxH) / 2;
+            if (x >= x0 && x <= x0 + colorBoxW && y >= winH - (y0 + colorBoxH) && y <= winH - y0) {
+                // Só permite selecionar cor se floodMode está ativo
+                if (floodMode) {
+                    currentFillColor = fillColors[i];
+                    cout << "Cor de preenchimento selecionada: " << fillColorNames[i] << "\n";
+                }
+                glutPostRedisplay();
+                return;
+            }
+        }
+    }
     // If click is inside sidebar, handle menu actions and don't treat as canvas click
     if (x < sidebarWidth && button == GLUT_LEFT_BUTTON && state == GLUT_DOWN)
     {
-        // delegate to sidebar handler
-        // implement inline handler here
-        auto handleSidebarClick = [&](int sx, int sy)
-        {
-            std::vector<std::string> labels = {"Linha", "Retangulo", "Triangulo", "Poligono", "Circulo", "Flood Fill", "Clear"};
-            int btnH = 36;
-            int margin = 8;
-            for (size_t i = 0; i < labels.size(); ++i)
-            {
-                int ytop = winH - margin - int(i) * (btnH + margin);
-                int ybot = ytop - btnH;
-                if (sy >= ybot && sy <= ytop)
-                {
-                    if (i <= 4)
-                    {
-                        // set drawing mode
-                        TipoForma newMode = M_LINHA;
-                        if (i == 0) newMode = M_LINHA;
-                        if (i == 1) newMode = M_RETANGULO;
-                        if (i == 2) newMode = M_TRIANGULO;
-                        if (i == 3) newMode = M_POLIGONO;
-                        if (i == 4) newMode = M_CIRCULO;
-                        modo = newMode;
-                        drawing = false; // cancel any current drawing
-                        floodMode = false; // selecting a drawing mode exits flood-fill mode
-                        cout << "Modo selecionado: " << labels[i] << "\n";
-                    }
-                    else if (i == 5)
-                    {
-                        // flood fill: enable one-click flood mode
-                        floodMode = true;
-                        drawing = false; // don't allow drawing while in flood mode
-                        cout << "Flood fill ativado: clique na regio para preencher\n";
-                    }
-                    else if (i == 6)
-                    {
-                        // clear
-                        formas.clear();
-                        clearScreen();
-                        cout << "Canvas limpo\n";
-                    }
-                    glutPostRedisplay();
-                    return;
-                }
-            }
-        };
-
-        handleSidebarClick(x, yy);
+        // ...existing code...
         return;
     }
     if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN)
@@ -1062,7 +1099,8 @@ void mouse(int button, int state, int x, int y)
         // If we're in flood mode, perform one-click fill and do not collect any drawing vertices
         if (floodMode)
         {
-            floodFill4(x, yy, FILL_COLOR);
+            // Só faz o preenchimento se não clicou no menu de cor
+            floodFill4(x, yy, currentFillColor);
             floodMode = false;
             glutPostRedisplay();
             return;
