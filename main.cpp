@@ -606,9 +606,11 @@ void redrawAll()
 {
     // Limpa framebuffer em RAM
     std::fill(framebuffer.begin(), framebuffer.end(), WHITE);
-    // we'll flush the framebuffer to the screen after rasterizing shapes
 
-    // Desenha todas as formas usando as rotinas definidas
+    // Primeiro aplica o overlay (preenchimentos) no framebuffer
+    applyOverlayToFramebuffer();
+
+    // Depois desenha todas as formas (arestas) por cima do framebuffer já preenchido
     for (const auto &f : formas)
     {
         switch (f.tipo)
@@ -642,6 +644,7 @@ void redrawAll()
         }
     }
 
+    // Desenha preview da forma em desenho, se houver
     if (drawing)
     {
         Color previewColor = RED; // cor do preview
@@ -730,14 +733,11 @@ void redrawAll()
             glVertex2i(x0, y0 + colorBoxH);
             glEnd();
             // nome da cor
-            glColor3ub(30, 30, 30);
-            draw_text_stroke(x0 + 2, y0 - 10, fillColorNames[i], 0.10);
+            //glColor3ub(30, 30, 30);
+            //draw_text_stroke(x0 + 2, y0 - 10, fillColorNames[i], 0.10);
         }
     };
 
-    // flush rasterized shapes/preview to the screen
-    // compose overlay (fills) on top of rasterized framebuffer
-    applyOverlayToFramebuffer();
     flushFramebuffer();
 
     // draw sidebar BEFORE overlays and UI text
@@ -1091,7 +1091,54 @@ void mouse(int button, int state, int x, int y)
     // If click is inside sidebar, handle menu actions and don't treat as canvas click
     if (x < sidebarWidth && button == GLUT_LEFT_BUTTON && state == GLUT_DOWN)
     {
-        // ...existing code...
+        // delegate to sidebar handler
+        // implement inline handler here
+        auto handleSidebarClick = [&](int sx, int sy)
+            {
+                std::vector<std::string> labels = { "Linha", "Retangulo", "Triangulo", "Poligono", "Circulo", "Flood Fill", "Clear" };
+                int btnH = 36;
+                int margin = 8;
+                for (size_t i = 0; i < labels.size(); ++i)
+                {
+                    int ytop = winH - margin - 40 - int(i) * (btnH + margin);
+                    int ybot = ytop - btnH;
+                    if (sy >= ybot && sy <= ytop)
+                    {
+                        if (i <= 4)
+                        {
+                            // set drawing mode
+                            TipoForma newMode = M_LINHA;
+                            if (i == 0) newMode = M_LINHA;
+                            if (i == 1) newMode = M_RETANGULO;
+                            if (i == 2) newMode = M_TRIANGULO;
+                            if (i == 3) newMode = M_POLIGONO;
+                            if (i == 4) newMode = M_CIRCULO;
+                            modo = newMode;
+                            drawing = false; // cancel any current drawing
+                            cout << "Modo selecionado: " << labels[i] << "\n";
+                        }
+                        else if (i == 5)
+                        {
+                            // flood fill: enable one-click flood mode
+                            floodMode = true;
+                            cout << "Flood fill ativado: clique na regio para preencher\n";
+                        }
+                        else if (i == 6)
+                        {
+                            // clear
+                            formas.clear();
+                            std::fill(framebuffer.begin(), framebuffer.end(), WHITE);
+                            glClear(GL_COLOR_BUFFER_BIT);
+                            glutSwapBuffers();
+                            cout << "Canvas limpo\n";
+                        }
+                        glutPostRedisplay();
+                        return;
+                    }
+                }
+            };
+
+        handleSidebarClick(x, yy);
         return;
     }
     if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN)
